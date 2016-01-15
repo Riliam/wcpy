@@ -1,0 +1,27 @@
+broker:
+  image: local/wcpy
+  command: wcpy broker_run --frontend-port 15000 --backend-port 15001
+
+main:
+  image: local/wcpy
+  command: wcpy main_run --http-port 8080 --broker-host broker --broker-port 15000 --redis-host redis --redis-port 6379 
+  links:
+    - broker
+    - redis
+  ports:
+    - "8080:8080"
+
+worker1:
+  image: local/wcpy
+  command: wcpy worker_run --broker-host broker --broker-port 15001
+  links:
+    - broker
+
+worker2:
+  image: local/wcpy
+  command: wcpy worker_run --broker-host broker --broker-port 15001
+  links:
+    - broker
+
+redis:
+  image: redis
