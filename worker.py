@@ -2,6 +2,7 @@ from collections import Counter
 import string
 import json
 import zmq
+import click
 
 
 def process_text(text):
@@ -11,10 +12,14 @@ def process_text(text):
     return words_list
 
 
-def main():
+@click.command()
+@click.option('--broker-host', default='localhost')
+@click.option('--broker-port', default=12346)
+def main(broker_host, broker_port):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
-    socket.connect('tcp://localhost:12346')
+    broker_url = 'tcp://{0}:{1}'.format(broker_host, broker_port)
+    socket.connect(broker_url)
 
     while True:
         message = socket.recv_string()

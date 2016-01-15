@@ -3,32 +3,33 @@ from collections import Counter
 import string
 import asyncio
 
+import click
 from aiohttp import web
 import aioredis
 import aiozmq
 import zmq
 
-REDIS_FREQUENCIES_KEY = 'frequencies'
-
 
 async def get_frequencies(socket, text):
-    socket.send_string(text)
-    frequencies = json.loads(socket.recv_string())
+    socket.write([text.encode('utf-8')])
+    resp = await socket.read()
+    json_str = resp[0]
+    frequencies = json.loads(json_str.decode('utf-8'))
     return frequencies
 
 
 async def update_frequencies(redis, frequencies):
     for k, v in frequencies.items():
-        old_v = await redis.zscore(REDIS_FREQUENCIES_KEY, k)
+        old_v = await redis.zscore(redis.sorted_set_name, k)
         if old_v is None:
-            redis.zadd(REDIS_FREQUENCIES_KEY, v, k)
+            redis.zadd(redis.sorted_set_name, v, k)
         else:
-            redis.zincrby(REDIS_FREQUENCIES_KEY, v, k)
+            redis.zincrby(redis.sorted_set_name, v, k)
 
 
 async def get_most_frequent_words(redis, count=10):
     r = await redis.zrange(
-        REDIS_FREQUENCIES_KEY,
+        redis.sorted_set_name,
         -count,
         -1,
         withscores=True)
@@ -59,28 +60,44 @@ async def add_frequencies(request):
 
 
 async def delete_frequencies(request):
-    await request.app.redis.delete(REDIS_FREQUENCIES_KEY)
+    await request.app.redis.delete(request.app.redis.sorted_set_name)
     return web.Response(body=b'Deleted')
 
 
-async def init(loop):
+async def init(
+        loop,
+        http_host,
+        http_port,
+        broker_host,
+        broker_port,
+        redis_host,
+        redis_port,
+        redis_sorted_set_name):
     app = web.Application()
     app.router.add_route('POST', '/add-frequencies', add_frequencies)
     app.router.add_route('DELETE', '/delete-frequencies', delete_frequencies)
     handler = app.make_handler()
-    srv = await loop.create_server(handler, '0.0.0.0', 8080)
+    srv = await loop.create_server(handler, http_host, http_port)
 
-    app.redis = await aioredis.create_redis(('127.0.0.1', 6379), loop=loop)
+    app.redis = await aioredis.create_redis((redis_host, redis_port), loop=loop)
+    app.redis.sorted_set_name = redis_sorted_set_name
 
-    context = zmq.Context()
-    app.zsocket = context.socket(zmq.REQ)
-    app.zsocket.connect('tcp://localhost:12345')
+    url = 'tcp://{0}:{1}'.format(broker_host, broker_port)
+    app.zsocket = await aiozmq.create_zmq_stream(zmq.REQ, connect=url)
     return app, handler, srv
 
 
-if __name__ == '__main__':
+@click.command()
+@click.option('--http-host', default='0.0.0.0')
+@click.option('--http-port', default=8080)
+@click.option('--broker-host', default='localhost')
+@click.option('--broker-port', default=12345)
+@click.option('--redis-host', default='127.0.0.1')
+@click.option('--redis-port', default=6379)
+@click.option('--redis-sorted-set-name', default='frequencies')
+def main_run(**kwargs):
     loop = asyncio.get_event_loop()
-    app, handler, srv = loop.run_until_complete(init(loop))
+    app, handler, srv = loop.run_until_complete(init(loop, **kwargs))
     try:
         loop.run_forever()
     except KeyboardInterrupt:
@@ -91,5 +108,10 @@ if __name__ == '__main__':
         loop.run_until_complete(handler.finish_connections(1.0))
         app.redis.close()
         loop.run_until_complete(app.redis.wait_closed())
+        app.zsocket.close()
         loop.run_until_complete(app.finish())
     loop.close()
+
+
+if __name__ == '__main__':
+    main_run()
