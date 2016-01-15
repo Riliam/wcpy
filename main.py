@@ -1,28 +1,25 @@
+import json
 from collections import Counter
 import string
 import asyncio
 
 from aiohttp import web
 import aioredis
+import aiozmq
+import zmq
 
-REDIS_FREQUENCIES_NAME = 'frequencies'
-
-
-def process_text(text):
-    punct_to_space_table = {ord(c): ' ' for c in string.punctuation}
-    cleaned_text = text.lower().translate(punct_to_space_table)
-    words_list = cleaned_text.split()
-    return words_list
+REDIS_FREQUENCIES_KEY = 'frequencies'
 
 
-def get_frequencies(text):
-    words_list = process_text(text)
-    return Counter(words_list)
+async def get_frequencies(socket, text):
+    socket.send_string(text)
+    frequencies = json.loads(socket.recv_string())
+    return frequencies
 
 
 async def update_frequencies(redis, frequencies):
     for k, v in frequencies.items():
-        old_v = await redis.zscore(REDIS_FREQUENCIES_NAME, k)
+        old_v = await redis.zscore(REDIS_FREQUENCIES_KEY, k)
         if old_v is None:
             redis.zadd(REDIS_FREQUENCIES_KEY, v, k)
         else:
@@ -35,7 +32,7 @@ async def get_most_frequent_words(redis, count=10):
         -count,
         -1,
         withscores=True)
-    return zip(r[::2], r[1::2])
+    return zip(r[-2::-2], r[::-2])
 
 
 def render_message(pairs):
@@ -52,7 +49,7 @@ async def add_frequencies(request):
     data = await request.post()
     text = data['text']
 
-    frequencies = get_frequencies(text)
+    frequencies = await get_frequencies(request.app.zsocket, text)
     await update_frequencies(request.app.redis, frequencies)
     top10_words = await get_most_frequent_words(request.app.redis, 10)
 
@@ -72,7 +69,12 @@ async def init(loop):
     app.router.add_route('DELETE', '/delete-frequencies', delete_frequencies)
     handler = app.make_handler()
     srv = await loop.create_server(handler, '0.0.0.0', 8080)
+
     app.redis = await aioredis.create_redis(('127.0.0.1', 6379), loop=loop)
+
+    context = zmq.Context()
+    app.zsocket = context.socket(zmq.REQ)
+    app.zsocket.connect('tcp://localhost:12345')
     return app, handler, srv
 
 
