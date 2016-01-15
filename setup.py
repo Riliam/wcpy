@@ -11,6 +11,7 @@ setup(
         'aiozmq',
         'aioredis',
         'requests',
+        'docker-compose',
     ],
     entry_points='''
         [console_scripts]

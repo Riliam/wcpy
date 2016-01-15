@@ -13,9 +13,11 @@ def process_text(text):
 
 
 @click.command()
-@click.option('--broker-host', default='localhost')
-@click.option('--broker-port', default=12346)
+@click.option('--broker-host', default='localhost', help='Host of broker')
+@click.option('--broker-port', default=12346, help='Port of broker backend socket')
 def worker_run(broker_host, broker_port):
+    ''' Start worker process, which converts raw text into frequency map.
+    '''
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     broker_url = 'tcp://{0}:{1}'.format(broker_host, broker_port)
@@ -24,7 +26,7 @@ def worker_run(broker_host, broker_port):
     while True:
         message = socket.recv_string()
         print('.')
-        
+
         words_list = process_text(message)
         counter = Counter(words_list)
         json_str = json.dumps(counter)

@@ -2,9 +2,11 @@ import zmq
 import click
 
 @click.command()
-@click.option('--frontend-port', default=12345)
-@click.option('--backend-port', default=12346)
+@click.option('--frontend-port', default=12345, help='Port to connect clients')
+@click.option('--backend-port', default=12346, help='Port to connect workers')
 def broker_run(frontend_port, backend_port):
+    ''' Broker process to proxy data between clients and workers
+    '''
     context = zmq.Context()
 
     frontend = context.socket(zmq.ROUTER)
