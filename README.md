@@ -15,7 +15,7 @@ There is 3 types of processes:
 - Python 3.5
 - Docker and docker-compose
 - Redis server
-- libzmq [http://zeromq.org/area:download](installed)
+- libzmq [installed](http://zeromq.org/area:download)
     
 ### Installation in local virtualenv
     
