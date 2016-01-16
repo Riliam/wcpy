@@ -21,7 +21,7 @@ There is 3 types of processes:
     
 Run following commands to get working copy of project:
 
-    git clone ....
+    git clone https://github.com/Riliam/wcpy.git
     cd wcpy
     pyvenv venv
     source venv/bin/activate
